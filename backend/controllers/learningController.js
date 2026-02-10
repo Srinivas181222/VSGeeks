@@ -314,7 +314,10 @@ const seedPython = async (req, res) => {
       solution: "def count_evens(nums):\n    return sum(1 for n in nums if n % 2 == 0)\n",
       testCases: [
         { input: [[1, 2, 3, 4]], output: 2 },
-        { input: [[i, i + 1, i + 2]], output: [i, i + 1, i + 2].filter((n) => n % 2 === 0).length },
+        {
+          input: [[i, i + 1, i + 2]],
+          output: [i, i + 1, i + 2].filter((n) => n % 2 === 0).length,
+        },
       ],
     }),
     (i) => ({
