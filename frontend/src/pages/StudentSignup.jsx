@@ -16,7 +16,7 @@ export default function StudentSignup() {
         method: "POST",
         body: JSON.stringify({ email, password, teacherEmail, displayName }),
       });
-      setMessage(data.message || "Check your email to verify your account.");
+      setMessage(data.message || "Account created. You can log in now.");
     } catch (err) {
       setMessage(err.message);
     }

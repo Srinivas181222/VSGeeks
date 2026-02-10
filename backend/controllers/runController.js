@@ -1,4 +1,4 @@
-const { execFile } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -6,7 +6,7 @@ const Project = require("../models/Project");
 const { findNode } = require("../utils/tree");
 
 const runPython = async (req, res) => {
-  const { code, projectId, fileId } = req.body;
+  const { code, projectId, fileId, input } = req.body;
 
   let source = code;
   if (!source && projectId && fileId) {
@@ -30,18 +30,57 @@ const runPython = async (req, res) => {
 
   fs.writeFileSync(tempFile, source, "utf8");
 
-  execFile(
-    "python",
-    [tempFile],
-    { timeout: 5000, maxBuffer: 1024 * 1024 },
-    (error, stdout, stderr) => {
-      fs.unlink(tempFile, () => {});
-      if (error) {
-        return res.json({ output: stderr || error.message });
-      }
-      return res.json({ output: stdout });
+  const child = spawn("python", [tempFile], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  let killed = false;
+  const maxOutput = 1024 * 1024;
+
+  const killTimer = setTimeout(() => {
+    killed = true;
+    child.kill("SIGKILL");
+  }, 5000);
+
+  const finish = (output) => {
+    clearTimeout(killTimer);
+    fs.unlink(tempFile, () => {});
+    return res.json({ output });
+  };
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString();
+    if (stdout.length > maxOutput) {
+      killed = true;
+      child.kill("SIGKILL");
     }
-  );
+  });
+
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+    if (stderr.length > maxOutput) {
+      killed = true;
+      child.kill("SIGKILL");
+    }
+  });
+
+  child.on("error", (err) => {
+    return finish(err.message);
+  });
+
+  child.on("close", () => {
+    if (killed) {
+      return finish("Execution timed out or output was too large.");
+    }
+    return finish(stderr || stdout);
+  });
+
+  if (typeof input === "string" && input.length) {
+    child.stdin.write(input);
+  }
+  child.stdin.end();
 };
 
 module.exports = { runPython };

@@ -4,12 +4,14 @@ import Editor from "@monaco-editor/react";
 import Navbar from "../components/Navbar";
 import ConsolePanel from "../components/ConsolePanel";
 import { apiRequest } from "../lib/api";
+import { applyVscodeTheme, editorOptions } from "../lib/monaco";
 
 export default function ProblemSolver() {
   const { topicId, problemId } = useParams();
   const [problem, setProblem] = useState(null);
   const [code, setCode] = useState("");
   const [output, setOutput] = useState("");
+  const [stdin, setStdin] = useState("");
   const [result, setResult] = useState(null);
   const [showSolution, setShowSolution] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,7 +30,7 @@ export default function ProblemSolver() {
     try {
       const res = await apiRequest("/api/run", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, input: stdin }),
       });
       setOutput(res.output);
     } catch (err) {
@@ -144,17 +146,14 @@ export default function ProblemSolver() {
             <Editor
               height="100%"
               language="python"
-              theme="vs-dark"
+              theme="vscode-dark-plus"
               value={code}
               onChange={(value) => setCode(value ?? "")}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: false },
-                fontFamily: "JetBrains Mono, monospace",
-              }}
+              beforeMount={applyVscodeTheme}
+              options={editorOptions}
             />
           </div>
-          <ConsolePanel output={output} />
+          <ConsolePanel output={output} stdin={stdin} onStdinChange={setStdin} />
           <div className="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-4 py-2 text-xs text-slate-400">
             <div>Python • UTF-8 • LF</div>
             <div>LeetCode-style judge enabled</div>

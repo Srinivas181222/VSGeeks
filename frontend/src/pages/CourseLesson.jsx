@@ -4,6 +4,7 @@ import Editor from "@monaco-editor/react";
 import Navbar from "../components/Navbar";
 import ConsolePanel from "../components/ConsolePanel";
 import { apiRequest } from "../lib/api";
+import { applyVscodeTheme, editorOptions } from "../lib/monaco";
 
 export default function CourseLesson() {
   const { id, lessonId } = useParams();
@@ -13,6 +14,7 @@ export default function CourseLesson() {
   const [progress, setProgress] = useState(null);
   const [editorValue, setEditorValue] = useState("");
   const [output, setOutput] = useState("");
+  const [stdin, setStdin] = useState("");
   const [error, setError] = useState("");
 
   const completedLessons = useMemo(
@@ -61,7 +63,7 @@ export default function CourseLesson() {
     try {
       const res = await apiRequest("/api/run", {
         method: "POST",
-        body: JSON.stringify({ code: editorValue }),
+        body: JSON.stringify({ code: editorValue, input: stdin }),
       });
       setOutput(res.output);
     } catch (err) {
@@ -150,17 +152,14 @@ export default function CourseLesson() {
             <Editor
               height="100%"
               language="python"
-              theme="vs-dark"
+              theme="vscode-dark-plus"
               value={editorValue}
               onChange={(value) => setEditorValue(value ?? "")}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: false },
-                fontFamily: "JetBrains Mono, monospace",
-              }}
+              beforeMount={applyVscodeTheme}
+              options={editorOptions}
             />
           </div>
-          <ConsolePanel output={output} />
+          <ConsolePanel output={output} stdin={stdin} onStdinChange={setStdin} />
         </div>
       </div>
     </div>

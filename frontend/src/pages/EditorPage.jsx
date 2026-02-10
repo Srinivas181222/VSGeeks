@@ -11,6 +11,7 @@ import ActivityBar from "../components/ActivityBar";
 import { apiRequest } from "../lib/api";
 import { findNode, flattenFiles } from "../lib/tree";
 import { tutorials } from "../data/tutorials";
+import { applyVscodeTheme, editorOptions } from "../lib/monaco";
 
 const updateContent = (nodes, nodeId, content) =>
   nodes.map((node) => {
@@ -30,11 +31,13 @@ export default function EditorPage() {
   const [activeFileId, setActiveFileId] = useState(null);
   const [editorValue, setEditorValue] = useState("");
   const [output, setOutput] = useState("");
+  const [stdin, setStdin] = useState("");
   const [showTutorial, setShowTutorial] = useState(true);
   const [selectedTutorial, setSelectedTutorial] = useState(tutorials[0]);
   const [modal, setModal] = useState({ open: false, type: "", target: null, parentId: null });
   const [nameInput, setNameInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fileError, setFileError] = useState("");
   const saveTimer = useRef(null);
 
   const activeFile = useMemo(() => findNode(tree, activeFileId), [tree, activeFileId]);
@@ -109,7 +112,7 @@ export default function EditorPage() {
     try {
       const res = await apiRequest("/api/run", {
         method: "POST",
-        body: JSON.stringify({ code: editorValue }),
+        body: JSON.stringify({ code: editorValue, input: stdin }),
       });
       setOutput(res.output);
     } catch (err) {
@@ -137,6 +140,7 @@ export default function EditorPage() {
   const confirmModal = async () => {
     const name = nameInput.trim();
     if (!name) return;
+    setFileError("");
     try {
       if (modal.type === "new-file" || modal.type === "new-folder") {
         const type = modal.type === "new-file" ? "file" : "folder";
@@ -162,6 +166,8 @@ export default function EditorPage() {
           prev.map((tab) => (tab.id === modal.target.id ? { ...tab, name } : tab))
         );
       }
+    } catch (err) {
+      setFileError(err.message);
     } finally {
       closeModal();
     }
@@ -169,16 +175,21 @@ export default function EditorPage() {
 
   const deleteNode = async (node) => {
     if (!confirm(`Delete ${node.name}?`)) return;
-    const data = await apiRequest(`/api/files/${id}/delete`, {
-      method: "DELETE",
-      body: JSON.stringify({ nodeId: node.id }),
-    });
-    setTree(data.tree);
-    setTabs((prev) => prev.filter((tab) => tab.id !== node.id));
-    if (activeFileId === node.id) {
-      const next = flattenFiles(data.tree || [])[0];
-      setActiveFileId(next?.id || null);
-      setEditorValue(next?.content || "");
+    setFileError("");
+    try {
+      const data = await apiRequest(`/api/files/${id}/delete`, {
+        method: "DELETE",
+        body: JSON.stringify({ nodeId: node.id }),
+      });
+      setTree(data.tree);
+      setTabs((prev) => prev.filter((tab) => tab.id !== node.id));
+      if (activeFileId === node.id) {
+        const next = flattenFiles(data.tree || [])[0];
+        setActiveFileId(next?.id || null);
+        setEditorValue(next?.content || "");
+      }
+    } catch (err) {
+      setFileError(err.message);
     }
   };
 
@@ -253,6 +264,11 @@ export default function EditorPage() {
               <div className="text-xs text-slate-500">{saving ? "Saving..." : "Saved"}</div>
             </div>
           </div>
+          {fileError && (
+            <div className="border-b border-slate-800 bg-slate-900 px-4 py-2 text-xs text-rose-300">
+              {fileError}
+            </div>
+          )}
 
           <EditorTabs
             tabs={tabs}
@@ -265,18 +281,15 @@ export default function EditorPage() {
             <Editor
               height="100%"
               language="python"
-              theme="vs-dark"
+              theme="vscode-dark-plus"
               value={editorValue}
               onChange={handleEditorChange}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: false },
-                fontFamily: "JetBrains Mono, monospace",
-              }}
+              beforeMount={applyVscodeTheme}
+              options={editorOptions}
             />
           </div>
 
-          <ConsolePanel output={output} />
+          <ConsolePanel output={output} stdin={stdin} onStdinChange={setStdin} />
           <div className="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-4 py-2 text-xs text-slate-400">
             <div>{activeFile?.name || "No file"} • Python</div>
             <div>UTF-8 • LF • VSCode-style</div>

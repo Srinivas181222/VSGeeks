@@ -23,19 +23,6 @@ export default function Login() {
     }
   };
 
-  const resend = async () => {
-    setMessage("");
-    try {
-      const res = await apiRequest("/api/auth/resend-verification", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
-      setMessage(res.message || "Verification email sent.");
-    } catch (err) {
-      setMessage(err.message);
-    }
-  };
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
@@ -73,9 +60,7 @@ export default function Login() {
             <Link to="/signup/teacher" className="hover:text-white">
               Create teacher account
             </Link>
-            <button onClick={resend} className="text-left hover:text-white">
-              Resend verification email
-            </button>
+            <div className="text-xs text-slate-500">Email verification is disabled.</div>
           </div>
           {message && <div className="text-sm text-rose-400">{message}</div>}
         </div>
