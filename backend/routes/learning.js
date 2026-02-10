@@ -1,24 +1,33 @@
 const express = require("express");
-const auth = require("../middleware/auth");
-const {
-  listTopics,
-  getTopic,
-  listProblems,
-  getProblem,
-  listChallenges,
-  getChallenge,
-  seedPython,
-} = require("../controllers/learningController");
-
 const router = express.Router();
 
-router.get("/topics", listTopics);
-router.get("/topics/:id", getTopic);
-router.get("/problems", listProblems);
-router.get("/problems/:id", getProblem);
-router.get("/challenges", listChallenges);
-router.get("/challenges/:id", getChallenge);
+// GET topics
+router.get("/topics", (req, res) => {
+  res.json([
+    { title: "Python Basics", slug: "python-basics" },
+    { title: "Loops", slug: "loops" },
+    { title: "Functions", slug: "functions" }
+  ]);
+});
 
-router.post("/seed/python", auth, seedPython);
+// GET lesson
+router.get("/lesson/:slug", (req, res) => {
+  const lessons = {
+    "python-basics": {
+      title: "Python Basics",
+      content: "print('Hello world')"
+    },
+    "loops": {
+      title: "Loops",
+      content: "for i in range(5): print(i)"
+    },
+    "functions": {
+      title: "Functions",
+      content: "def greet(): print('hi')"
+    }
+  };
+
+  res.json(lessons[req.params.slug] || {});
+});
 
 module.exports = router;

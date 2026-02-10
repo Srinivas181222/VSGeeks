@@ -40,7 +40,7 @@ const getChallenge = async (req, res) => {
 };
 
 const seedPython = async (req, res) => {
-  if (req.user?.id) {
+  if (req.user && req.user.id) {
     const user = await User.findById(req.user.id);
     if (!user || user.role !== "teacher") {
       return res.status(403).json({ error: "Teacher access required" });
@@ -298,9 +298,9 @@ const seedPython = async (req, res) => {
       prompt: "Return the sum of integers from 1 to n.",
       entryName: "sum_to_n",
       starter: "def sum_to_n(n):\n    # TODO\n    return 0\n",
-      solution: "def sum_to_n(n):\n    return n * (n + 1) // 2\n",
+      solution: "def sum_to_n(n):\n    return int((n * (n + 1)) / 2)\n",
       testCases: [
-        { input: [i], output: (i * (i + 1)) // 2 },
+        { input: [i], output: Math.floor((i * (i + 1)) / 2) },
         { input: [10], output: 55 },
       ],
     }),
