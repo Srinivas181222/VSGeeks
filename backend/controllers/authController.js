@@ -1,9 +1,7 @@
 const bcrypt = require("bcryptjs");
-const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const validator = require("validator");
 const User = require("../models/User");
-const { sendVerificationEmail } = require("../utils/email");
 
 const signupStudent = async (req, res) => {
   const { email, password, teacherEmail, displayName } = req.body;
@@ -25,7 +23,6 @@ const signupStudent = async (req, res) => {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const verificationToken = crypto.randomBytes(24).toString("hex");
   const user = await User.create({
     email,
     password: hashed,
@@ -33,14 +30,13 @@ const signupStudent = async (req, res) => {
     displayName: displayName || "",
     teacherId: teacher._id,
     teacherEmail: teacher.email,
-    verificationToken,
-    verificationTokenExpires: new Date(Date.now() + 1000 * 60 * 60 * 24),
+    emailVerified: true,
+    verificationToken: "",
+    verificationTokenExpires: null,
   });
 
-  await sendVerificationEmail({ to: user.email, token: verificationToken });
-
   return res.json({
-    message: "Verification email sent",
+    message: "Account created. You can log in now.",
     user: { id: user._id, email: user.email, role: user.role, teacherEmail },
   });
 };
@@ -64,20 +60,18 @@ const signupTeacher = async (req, res) => {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const verificationToken = crypto.randomBytes(24).toString("hex");
   const user = await User.create({
     email,
     password: hashed,
     role: "teacher",
     displayName: displayName || "",
-    verificationToken,
-    verificationTokenExpires: new Date(Date.now() + 1000 * 60 * 60 * 24),
+    emailVerified: true,
+    verificationToken: "",
+    verificationTokenExpires: null,
   });
 
-  await sendVerificationEmail({ to: user.email, token: verificationToken });
-
   return res.json({
-    message: "Verification email sent",
+    message: "Account created. You can log in now.",
     user: { id: user._id, email: user.email, role: user.role },
   });
 };
@@ -96,10 +90,6 @@ const login = async (req, res) => {
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ error: "Wrong password" });
-  if (!user.emailVerified) {
-    return res.status(403).json({ error: "Email not verified" });
-  }
-
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "dev_secret", {
     expiresIn: "7d",
   });
@@ -117,41 +107,11 @@ const login = async (req, res) => {
 };
 
 const verifyEmail = async (req, res) => {
-  const { token } = req.query;
-  if (!token) return res.status(400).json({ error: "Token required" });
-
-  const user = await User.findOne({ verificationToken: token });
-  if (!user) return res.status(404).json({ error: "Invalid token" });
-  if (user.emailVerified) return res.json({ message: "Already verified" });
-  if (user.verificationTokenExpires && user.verificationTokenExpires < new Date()) {
-    return res.status(400).json({ error: "Token expired" });
-  }
-
-  user.emailVerified = true;
-  user.verificationToken = "";
-  user.verificationTokenExpires = null;
-  await user.save();
-
-  return res.json({ message: "Email verified" });
+  return res.json({ message: "Email verification is disabled." });
 };
 
 const resendVerification = async (req, res) => {
-  const { email } = req.body;
-  if (!email || !validator.isEmail(email)) {
-    return res.status(400).json({ error: "Valid email required" });
-  }
-
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ error: "User not found" });
-  if (user.emailVerified) return res.json({ message: "Already verified" });
-
-  const verificationToken = crypto.randomBytes(24).toString("hex");
-  user.verificationToken = verificationToken;
-  user.verificationTokenExpires = new Date(Date.now() + 1000 * 60 * 60 * 24);
-  await user.save();
-
-  await sendVerificationEmail({ to: user.email, token: verificationToken });
-  return res.json({ message: "Verification email sent" });
+  return res.json({ message: "Email verification is disabled." });
 };
 
 module.exports = { signupStudent, signupTeacher, login, verifyEmail, resendVerification };
