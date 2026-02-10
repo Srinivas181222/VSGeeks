@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CodeLearn Platform
 
 A production-ready coding education platform with multi-file projects, VSCode-style editor, tutorials, and practice problems.
@@ -79,3 +80,7 @@ The backend and frontend are modular to support multi-language execution, docker
 ## Course System
 - Seed sample courses with `POST /api/courses/seed` (one-time).
 - Courses include lessons and assignments with progress tracked per user enrollment.
+=======
+# VSGeeks
+GeeksforGeeks with VSCode mashup
+>>>>>>> a58b1ea17ad1b06f4b11a2c8456a175804a9b21d
