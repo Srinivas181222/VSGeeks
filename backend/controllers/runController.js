@@ -107,7 +107,7 @@ const runPython = async (req, res) => {
 
     const tempFile = writeTempFile(source);
 
-    const child = spawn("python", [tempFile], {
+    const child = spawn("python", ["-u", tempFile], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -173,7 +173,7 @@ const startRunSession = async (req, res) => {
     });
 
     const tempFile = writeTempFile(source);
-    const child = spawn("python", [tempFile], {
+    const child = spawn("python", ["-u", tempFile], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     const sessionId = randomUUID();
