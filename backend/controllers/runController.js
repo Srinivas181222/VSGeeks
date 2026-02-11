@@ -8,7 +8,13 @@ const { findNode } = require("../utils/tree");
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const LEGACY_TIMEOUT_MS = 5000;
-const SESSION_TIMEOUT_MS = Number(process.env.RUN_SESSION_TIMEOUT_MS || 180000);
+const DEFAULT_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
+const MIN_SESSION_TIMEOUT_MS = 30 * 1000;
+const SESSION_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.RUN_SESSION_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SESSION_TIMEOUT_MS;
+  return Math.max(raw, MIN_SESSION_TIMEOUT_MS);
+})();
 const SESSION_TTL_MS = 30000;
 const runSessions = new Map();
 
@@ -228,12 +234,19 @@ const startRunSession = async (req, res) => {
         finishSession(session, { status: "ok", exitCode: 0 });
         return;
       }
-      finishSession(session, { status: "runtime_error", exitCode, signal });
+      finishSession(session, {
+        status: "runtime_error",
+        exitCode,
+        signal,
+        message: `Process exited with code ${exitCode}${signal ? ` (signal ${signal})` : ""}.`,
+      });
     });
 
     session.killTimer = setTimeout(() => {
       if (session.finished) return;
-      session.terminatedReason = "Execution timed out.";
+      session.terminatedReason = `Execution timed out after ${Math.round(
+        SESSION_TIMEOUT_MS / 1000
+      )} seconds.`;
       child.kill("SIGKILL");
     }, SESSION_TIMEOUT_MS);
 
@@ -250,7 +263,9 @@ const startRunSession = async (req, res) => {
 const streamRunSession = (req, res) => {
   const session = runSessions.get(req.params.sessionId);
   if (!session || session.userId !== req.user.id) {
-    return res.status(404).json({ error: "Run session not found" });
+    return res.status(404).json({
+      error: "Run session not found (expired or unavailable on this server instance).",
+    });
   }
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -284,7 +299,9 @@ const streamRunSession = (req, res) => {
 const sendRunInput = (req, res) => {
   const session = runSessions.get(req.params.sessionId);
   if (!session || session.userId !== req.user.id) {
-    return res.status(404).json({ error: "Run session not found" });
+    return res.status(404).json({
+      error: "Run session not found (expired or unavailable on this server instance).",
+    });
   }
   if (session.finished) {
     return res.status(409).json({ error: "Run session already finished" });
@@ -308,7 +325,9 @@ const sendRunInput = (req, res) => {
 const stopRunSession = (req, res) => {
   const session = runSessions.get(req.params.sessionId);
   if (!session || session.userId !== req.user.id) {
-    return res.status(404).json({ error: "Run session not found" });
+    return res.status(404).json({
+      error: "Run session not found (expired or unavailable on this server instance).",
+    });
   }
   if (!session.finished) {
     session.terminatedReason = "Execution stopped by user.";
