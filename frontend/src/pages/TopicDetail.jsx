@@ -53,7 +53,7 @@ export default function TopicDetail() {
               >
                 <div className="font-semibold text-white">{lesson.title}</div>
                 <div className="text-xs text-slate-500">Lesson {lesson.order}</div>
-                <div className="mt-2 text-sm text-slate-400">{lesson.content}</div>
+                <div className="mt-2 whitespace-pre-wrap text-sm text-slate-400">{lesson.content}</div>
               </div>
             ))}
           </div>

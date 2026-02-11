@@ -6,6 +6,7 @@ export default function TeacherAdmin() {
   const [students, setStudents] = useState([]);
   const [error, setError] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
+  const [importingContent, setImportingContent] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -45,6 +46,33 @@ export default function TeacherAdmin() {
     }
   };
 
+  const importTopicContent = async () => {
+    const confirmed = confirm(
+      "Import curated lesson content from web sources and replace existing lesson text?"
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setAdminMessage("");
+    setImportingContent(true);
+
+    try {
+      const res = await apiRequest("/api/seed/topic-content", {
+        method: "POST",
+        body: JSON.stringify({ replaceExisting: true }),
+      });
+      setAdminMessage(
+        `Imported web content into ${res.updatedLessons || 0} lessons across ${
+          res.updatedTopics || 0
+        } topics.`
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImportingContent(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
@@ -62,6 +90,13 @@ export default function TeacherAdmin() {
               className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-slate-500"
             >
               Seed Topics & Problems
+            </button>
+            <button
+              onClick={importTopicContent}
+              disabled={importingContent}
+              className="rounded-md border border-emerald-500/50 px-3 py-2 text-xs text-emerald-200 hover:border-emerald-400 disabled:opacity-50"
+            >
+              {importingContent ? "Importing..." : "Import Web Lesson Content"}
             </button>
             <button
               onClick={seedChallenges}

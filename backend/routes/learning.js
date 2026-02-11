@@ -10,6 +10,7 @@ const {
   getChallengeLeaderboard,
   seedPython,
   seedChallenges,
+  seedTopicContentFromWeb,
 } = require("../controllers/learningController");
 
 const router = express.Router();
@@ -26,5 +27,6 @@ router.get("/challenges/:id/leaderboard", auth, getChallengeLeaderboard);
 
 router.post("/seed/python", auth, seedPython);
 router.post("/seed/challenges", auth, seedChallenges);
+router.post("/seed/topic-content", auth, seedTopicContentFromWeb);
 
 module.exports = router;

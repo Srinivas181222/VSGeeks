@@ -5,6 +5,7 @@ const Challenge = require("../models/Challenge");
 const Submission = require("../models/Submission");
 const User = require("../models/User");
 const { percentileLowerBetter } = require("../utils/performance");
+const { pickCuratedSourceForLesson, scrapeLessonContent } = require("../utils/webContent");
 
 const CHALLENGE_BLUEPRINTS = [
   { title: "Warmup Sprint I", description: "Fast easy set focused on fundamentals." },
@@ -150,6 +151,104 @@ const seedChallenges = async (req, res) => {
 
   const created = await Challenge.insertMany(payload);
   return res.json({ message: "Challenges seeded", count: created.length, challenges: created });
+};
+
+const seedTopicContentFromWeb = async (req, res) => {
+  const user = await User.findById(req.user?.id);
+  if (!user || user.role !== "teacher") {
+    return res.status(403).json({ error: "Teacher access required" });
+  }
+
+  const { topicId = "", replaceExisting = true } = req.body || {};
+  const filter = topicId ? { _id: topicId } : {};
+
+  const topics = await Topic.find(filter).sort({ order: 1 });
+  if (!topics.length) {
+    return res.status(404).json({ error: "No topics found for import" });
+  }
+
+  let updatedTopics = 0;
+  let updatedLessons = 0;
+  const report = [];
+
+  for (const topic of topics) {
+    const lessonResults = [];
+    let topicChanged = false;
+
+    const orderedLessons = [...(topic.lessons || [])].sort((a, b) => a.order - b.order);
+    for (let index = 0; index < orderedLessons.length; index += 1) {
+      const lesson = orderedLessons[index];
+      const currentContent = (lesson.content || "").trim();
+
+      if (!replaceExisting && currentContent.length >= 80) {
+        lessonResults.push({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          status: "skipped",
+          reason: "Already has content",
+        });
+        continue;
+      }
+
+      const sourceUrl = pickCuratedSourceForLesson(topic.slug, index);
+      if (!sourceUrl) {
+        lessonResults.push({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          status: "skipped",
+          reason: `No curated source mapping found for topic slug '${topic.slug}'`,
+        });
+        continue;
+      }
+
+      try {
+        const scraped = await scrapeLessonContent({
+          url: sourceUrl,
+          topicTitle: topic.title,
+          lessonTitle: lesson.title,
+        });
+        lesson.content = scraped.content;
+        topicChanged = true;
+        updatedLessons += 1;
+
+        lessonResults.push({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          status: "updated",
+          sourceUrl: scraped.sourceUrl,
+          sourceTitle: scraped.sourceTitle,
+        });
+      } catch (err) {
+        lessonResults.push({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          status: "failed",
+          sourceUrl,
+          reason: err.message || "Unable to scrape source",
+        });
+      }
+    }
+
+    if (topicChanged) {
+      topic.markModified("lessons");
+      await topic.save();
+      updatedTopics += 1;
+    }
+
+    report.push({
+      topicId: topic._id,
+      topicSlug: topic.slug,
+      topicTitle: topic.title,
+      lessons: lessonResults,
+    });
+  }
+
+  return res.json({
+    message: "Topic content import finished",
+    updatedTopics,
+    updatedLessons,
+    report,
+  });
 };
 
 const getChallengeLeaderboard = async (req, res) => {
@@ -715,4 +814,5 @@ module.exports = {
   getChallengeLeaderboard,
   seedPython,
   seedChallenges,
+  seedTopicContentFromWeb,
 };
