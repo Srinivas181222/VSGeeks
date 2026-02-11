@@ -392,11 +392,31 @@ export default function ProblemSolver() {
                     : ""}
                 </div>
               )}
+              {result.resolverUsed && (
+                <div className="text-xs text-slate-500">Evaluated entry: {result.resolverUsed}</div>
+              )}
               {result.details?.length > 0 && (
-                <div className="mt-3 text-xs text-slate-500">Showing first failed cases.</div>
+                <div className="mt-3 space-y-2 text-xs text-slate-500">
+                  <div>Showing first failed cases.</div>
+                  {result.details.map((detail, index) => (
+                    <div
+                      key={`detail-${index}`}
+                      className="rounded-md border border-slate-800 bg-slate-900/60 p-2"
+                    >
+                      <div>Input: {JSON.stringify(detail.input)}</div>
+                      {detail.expected !== undefined && (
+                        <div>Expected: {JSON.stringify(detail.expected)}</div>
+                      )}
+                      {detail.output !== undefined && (
+                        <div>Output: {JSON.stringify(detail.output)}</div>
+                      )}
+                      {detail.error && <div>Error: {detail.error}</div>}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-            )}
+          )}
         </div>
 
         <div className="flex min-h-[740px] overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
