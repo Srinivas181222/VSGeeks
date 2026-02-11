@@ -232,6 +232,7 @@ export default function useInteractiveRun() {
           method: "POST",
           body: JSON.stringify({ input: payload }),
         });
+        appendOutput(payload.replace(/\r\n/g, "\n"));
         return;
       } catch (err) {
         lastError = err;
@@ -251,7 +252,7 @@ export default function useInteractiveRun() {
       setRunMessage(lastError.message);
     }
     throw lastError;
-  }, []);
+  }, [appendOutput]);
 
   const clearOutput = useCallback(() => {
     setOutput("");
