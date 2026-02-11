@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE, apiRequest } from "../lib/api";
 
+const SESSION_LOOKUP_ERROR_RE = /run session not found|expired or unavailable/i;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const parseSseBlock = (block) => {
   const normalized = block.replace(/\r/g, "");
   const lines = normalized.split("\n");
@@ -66,6 +69,38 @@ export default function useInteractiveRun() {
     setRunState((prev) => (prev === "running" || prev === "starting" ? "stopped" : prev));
   }, []);
 
+  const attachStreamWithRetry = useCallback(async (sessionId, signal) => {
+    const maxAttempts = 5;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const streamRes = await fetch(`${API_BASE}/api/run/session/${sessionId}/stream`, {
+        method: "GET",
+        headers: {
+          ...getAuthHeaders(),
+        },
+        signal,
+      });
+
+      if (streamRes.ok) {
+        if (!streamRes.body) {
+          throw new Error("Streaming is not supported in this browser.");
+        }
+        return streamRes;
+      }
+
+      const message = await streamRes.text().catch(() => "");
+      const retriable = streamRes.status === 404 && SESSION_LOOKUP_ERROR_RE.test(message);
+      const canRetry = retriable && attempt < maxAttempts && !signal.aborted;
+      if (canRetry) {
+        await wait(200 * attempt);
+        continue;
+      }
+      throw new Error(message || "Unable to start stream");
+    }
+
+    throw new Error("Unable to start stream");
+  }, []);
+
   const startRun = useCallback(
     async ({ code, projectId, fileId, initialInput = "" }) => {
       await stopRun();
@@ -99,22 +134,7 @@ export default function useInteractiveRun() {
         streamController = new AbortController();
         streamAbortRef.current = streamController;
 
-        const streamRes = await fetch(`${API_BASE}/api/run/session/${nextSessionId}/stream`, {
-          method: "GET",
-          headers: {
-            ...getAuthHeaders(),
-          },
-          signal: streamController.signal,
-        });
-
-        if (!streamRes.ok) {
-          const message = await streamRes.text();
-          throw new Error(message || "Unable to start stream");
-        }
-
-        if (!streamRes.body) {
-          throw new Error("Streaming is not supported in this browser.");
-        }
+        const streamRes = await attachStreamWithRetry(nextSessionId, streamController.signal);
         streamEstablished = true;
 
         const reader = streamRes.body.getReader();
@@ -191,7 +211,7 @@ export default function useInteractiveRun() {
         streamAbortRef.current = null;
       }
     },
-    [appendOutput, stopRun]
+    [appendOutput, attachStreamWithRetry, stopRun]
   );
 
   const sendInput = useCallback(async (inputText) => {
@@ -205,20 +225,32 @@ export default function useInteractiveRun() {
         ? inputText
         : `${inputText}\n`;
 
-    try {
-      await apiRequest(`/api/run/session/${activeSessionId}/input`, {
-        method: "POST",
-        body: JSON.stringify({ input: payload }),
-      });
-    } catch (err) {
-      if (/run session/i.test(err.message || "")) {
-        sessionRef.current = null;
-        setSessionId(null);
-        setRunState("error");
-        setRunMessage(err.message);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      try {
+        await apiRequest(`/api/run/session/${activeSessionId}/input`, {
+          method: "POST",
+          body: JSON.stringify({ input: payload }),
+        });
+        return;
+      } catch (err) {
+        lastError = err;
+        const retriable = SESSION_LOOKUP_ERROR_RE.test(err.message || "");
+        if (retriable && attempt < 4) {
+          await wait(150 * attempt);
+          continue;
+        }
+        break;
       }
-      throw err;
     }
+
+    if (SESSION_LOOKUP_ERROR_RE.test(lastError?.message || "")) {
+      sessionRef.current = null;
+      setSessionId(null);
+      setRunState("error");
+      setRunMessage(lastError.message);
+    }
+    throw lastError;
   }, []);
 
   const clearOutput = useCallback(() => {
