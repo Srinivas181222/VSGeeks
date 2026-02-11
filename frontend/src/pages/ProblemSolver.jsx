@@ -160,7 +160,8 @@ export default function ProblemSolver() {
 
     setFileError("");
     try {
-      await startRun({ code: activeFile.content || "" });
+      const code = (editorValue ?? "").length ? editorValue : activeFile.content || "";
+      await startRun({ code });
     } catch (err) {
       setFileError(err.message || "Unable to run code");
     }
@@ -172,7 +173,7 @@ export default function ProblemSolver() {
       return;
     }
 
-    const code = activeFile.content ?? editorValue;
+    const code = (editorValue ?? "").length ? editorValue : activeFile.content || "";
 
     setLoading(true);
     setResult(null);

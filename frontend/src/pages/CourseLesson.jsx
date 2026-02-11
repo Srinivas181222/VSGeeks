@@ -186,7 +186,8 @@ export default function CourseLesson() {
 
     setFileError("");
     try {
-      await startRun({ code: activeFile.content || "" });
+      const code = (editorValue ?? "").length ? editorValue : activeFile.content || "";
+      await startRun({ code });
     } catch (err) {
       setFileError(err.message || "Unable to run code");
     }
