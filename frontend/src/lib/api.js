@@ -1,5 +1,5 @@
 const rawBase = import.meta.env.VITE_API_URL;
-const API_BASE = rawBase && rawBase.length ? rawBase : "";
+export const API_BASE = rawBase && rawBase.length ? rawBase : "";
 
 export const apiRequest = async (path, options = {}) => {
   const token = localStorage.getItem("token");

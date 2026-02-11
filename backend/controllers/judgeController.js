@@ -3,8 +3,15 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const Problem = require("../models/Problem");
+const Challenge = require("../models/Challenge");
 const Submission = require("../models/Submission");
 const User = require("../models/User");
+const {
+  complexityToScore,
+  estimateComplexityFromCode,
+  normalizeComplexity,
+  percentileLowerBetter,
+} = require("../utils/performance");
 
 const buildHarness = (problem, code) => {
   const tests = JSON.stringify(problem.testCases || []);
@@ -69,6 +76,20 @@ const judgeProblem = async (req, res) => {
   if (!problem) return res.status(404).json({ error: "Problem not found" });
 
   const user = await User.findById(req.user.id);
+  const teacherId = user?.role === "student" ? user.teacherId : user?._id;
+  let challenge = null;
+  if (challengeId) {
+    challenge = await Challenge.findById(challengeId);
+    if (!challenge || !challenge.active) {
+      return res.status(404).json({ error: "Challenge not found or inactive" });
+    }
+    const problemIncluded = (challenge.problemIds || []).some(
+      (id) => id.toString() === problem._id.toString()
+    );
+    if (!problemIncluded) {
+      return res.status(400).json({ error: "Problem is not part of this challenge" });
+    }
+  }
 
   const tempFile = path.join(
     os.tmpdir(),
@@ -98,26 +119,69 @@ const judgeProblem = async (req, res) => {
       const payload = JSON.parse(resultLine.replace("__RESULT__", ""));
       const status = payload.passed === payload.total ? "Accepted" : "Wrong Answer";
       const runtimeMs = payload.runtimeMs || 0;
+      const estimated = estimateComplexityFromCode(code, problem.entryName);
+      const expectedComplexity = normalizeComplexity(problem.complexity);
+      const expectedComplexityScore = complexityToScore(expectedComplexity);
 
       const submission = await Submission.create({
         userId: req.user.id,
-        teacherId: user?.role === "student" ? user.teacherId : user?._id,
+        teacherId,
         problemId: problem._id,
         challengeId: challengeId || null,
         status,
         runtimeMs,
         passedCount: payload.passed,
         totalCount: payload.total,
+        estimatedComplexity: estimated.label,
+        complexityScore: estimated.score,
+        expectedComplexity,
+        expectedComplexityScore,
+        sourceLength: code.length,
       });
+
+      let runtimePercentile = 0;
+      let complexityPercentile = 0;
+      if (status === "Accepted") {
+        const peerFilter = {
+          problemId: problem._id,
+          status: "Accepted",
+        };
+
+        if (teacherId) peerFilter.teacherId = teacherId;
+        if (challengeId) peerFilter.challengeId = challengeId;
+
+        const peers = await Submission.find(peerFilter).select("runtimeMs complexityScore");
+        runtimePercentile = percentileLowerBetter(
+          peers.map((s) => s.runtimeMs),
+          runtimeMs
+        );
+        complexityPercentile = percentileLowerBetter(
+          peers.map((s) => s.complexityScore),
+          estimated.score
+        );
+      }
+
+      const challengeAccepted = !challengeId || status === "Accepted";
 
       return res.json({
         status,
         runtimeMs,
         passed: payload.passed,
         total: payload.total,
-        complexity: problem.complexity,
+        complexity: {
+          expected: expectedComplexity,
+          estimated: estimated.label,
+          score: estimated.score,
+          percentile: complexityPercentile,
+        },
+        runtimePercentile,
         submissionId: submission._id,
-        details: payload.details.slice(0, 3),
+        details: (payload.details || []).slice(0, 3),
+        challengeAccepted,
+        challengeMessage:
+          challengeId && !challengeAccepted
+            ? "Challenge submission is counted only when all test cases pass."
+            : "",
       });
     }
   );

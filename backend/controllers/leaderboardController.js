@@ -15,6 +15,7 @@ const getLeaderboard = async (req, res) => {
         _id: "$userId",
         solvedProblems: { $addToSet: "$problemId" },
         avgRuntime: { $avg: "$runtimeMs" },
+        avgComplexityScore: { $avg: "$complexityScore" },
         lastSubmission: { $max: "$createdAt" },
       },
     },
@@ -22,10 +23,11 @@ const getLeaderboard = async (req, res) => {
       $project: {
         solvedCount: { $size: "$solvedProblems" },
         avgRuntime: { $ifNull: ["$avgRuntime", 0] },
+        avgComplexityScore: { $ifNull: ["$avgComplexityScore", 0] },
         lastSubmission: 1,
       },
     },
-    { $sort: { solvedCount: -1, avgRuntime: 1 } },
+    { $sort: { solvedCount: -1, avgRuntime: 1, avgComplexityScore: 1 } },
   ]);
 
   const userIds = stats.map((s) => s._id);
@@ -41,6 +43,7 @@ const getLeaderboard = async (req, res) => {
       email: profile?.email,
       solvedCount: s.solvedCount,
       avgRuntime: Math.round(s.avgRuntime),
+      avgComplexityScore: Math.round(s.avgComplexityScore * 100) / 100,
       lastSubmission: s.lastSubmission,
     };
   });

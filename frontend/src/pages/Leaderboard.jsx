@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { apiRequest } from "../lib/api";
 
@@ -24,7 +24,7 @@ export default function Leaderboard() {
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="text-2xl font-semibold">Leaderboard</div>
         <div className="text-sm text-slate-400">
-          Ranked by solved count and average runtime.
+          Ranked by solved count, runtime, and complexity efficiency.
         </div>
         {error && <div className="mt-4 text-sm text-rose-400">{error}</div>}
 
@@ -36,6 +36,7 @@ export default function Leaderboard() {
                 <th className="px-4 py-3">Student</th>
                 <th className="px-4 py-3">Solved</th>
                 <th className="px-4 py-3">Avg Runtime</th>
+                <th className="px-4 py-3">Complexity</th>
                 <th className="px-4 py-3">Last Submission</th>
               </tr>
             </thead>
@@ -49,14 +50,15 @@ export default function Leaderboard() {
                   </td>
                   <td className="px-4 py-3">{row.solvedCount}</td>
                   <td className="px-4 py-3">{row.avgRuntime} ms</td>
+                  <td className="px-4 py-3">{row.avgComplexityScore}</td>
                   <td className="px-4 py-3 text-xs text-slate-400">
-                    {row.lastSubmission ? new Date(row.lastSubmission).toLocaleString() : "—"}
+                    {row.lastSubmission ? new Date(row.lastSubmission).toLocaleString() : "-"}
                   </td>
                 </tr>
               ))}
               {leaderboard.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan="6" className="px-4 py-6 text-center text-slate-400">
                     No leaderboard data yet.
                   </td>
                 </tr>

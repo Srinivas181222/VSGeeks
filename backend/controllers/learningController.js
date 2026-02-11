@@ -2,7 +2,53 @@ const crypto = require("crypto");
 const Topic = require("../models/Topic");
 const Problem = require("../models/Problem");
 const Challenge = require("../models/Challenge");
+const Submission = require("../models/Submission");
 const User = require("../models/User");
+const { percentileLowerBetter } = require("../utils/performance");
+
+const CHALLENGE_BLUEPRINTS = [
+  { title: "Warmup Sprint I", description: "Fast easy set focused on fundamentals." },
+  { title: "Warmup Sprint II", description: "Another quick round on core syntax and loops." },
+  { title: "Array Patterns", description: "Work through common array and list workflows." },
+  { title: "String Patterns", description: "Classic string and text manipulation practice." },
+  { title: "Hashing Essentials", description: "Dictionary/set usage for linear-time solutions." },
+  { title: "Two-Pointer Circuit", description: "Pointer movement and window-style patterns." },
+  { title: "Sliding Window Rush", description: "Optimize subarray and substring traversals." },
+  { title: "Sorting and Searching", description: "Sorting-based and binary-search-style exercises." },
+  { title: "Stack and Queue Lab", description: "LIFO/FIFO mechanics and monotonic ideas." },
+  { title: "Recursion Drill", description: "Recursive decomposition and backtracking basics." },
+  { title: "Dynamic Programming I", description: "Intro DP states and transitions." },
+  { title: "Dynamic Programming II", description: "Extended DP with optimization patterns." },
+  { title: "Greedy Decisions", description: "Pick local optimum strategies with proofs." },
+  { title: "Intervals and Events", description: "Merge, overlap, and scheduling style tasks." },
+  { title: "Prefix and Difference", description: "Prefix sum and range-update techniques." },
+  { title: "Math and Number Theory", description: "GCD, modular tricks, and numeric logic." },
+  { title: "Binary Tree Basics", description: "Tree traversal and recursive tree state." },
+  { title: "Graph Starter", description: "BFS/DFS basics and adjacency representation." },
+  { title: "Performance Gauntlet", description: "Same correctness, tighter runtime pressure." },
+  { title: "Final Ranked Contest", description: "Mixed difficulty contest ranked like LeetCode." },
+];
+
+const pickChallengeProblems = (problemIds, challengeIndex, countPerChallenge = 10) => {
+  if (!problemIds.length) return [];
+  const used = new Set();
+  const selected = [];
+  let cursor = (challengeIndex * 17) % problemIds.length;
+
+  while (selected.length < countPerChallenge && used.size < problemIds.length) {
+    const id = problemIds[cursor];
+    const key = id.toString();
+    if (!used.has(key)) {
+      used.add(key);
+      selected.push(id);
+    }
+    cursor = (cursor + 7) % problemIds.length;
+  }
+
+  return selected;
+};
+
+const round2 = (value) => Math.round(value * 100) / 100;
 
 const listTopics = async (req, res) => {
   const topics = await Topic.find().sort({ order: 1 });
@@ -29,14 +75,208 @@ const getProblem = async (req, res) => {
 };
 
 const listChallenges = async (req, res) => {
-  const challenges = await Challenge.find({ active: true }).sort({ createdAt: -1 });
+  const now = new Date();
+  const challenges = await Challenge.find({
+    active: true,
+    $and: [
+      { $or: [{ startsAt: null }, { startsAt: { $lte: now } }] },
+      { $or: [{ endsAt: null }, { endsAt: { $gte: now } }] },
+    ],
+  }).sort({ createdAt: -1 });
   return res.json(challenges);
 };
 
 const getChallenge = async (req, res) => {
-  const challenge = await Challenge.findById(req.params.id);
+  const now = new Date();
+  const challenge = await Challenge.findOne({
+    _id: req.params.id,
+    active: true,
+    $and: [
+      { $or: [{ startsAt: null }, { startsAt: { $lte: now } }] },
+      { $or: [{ endsAt: null }, { endsAt: { $gte: now } }] },
+    ],
+  });
   if (!challenge) return res.status(404).json({ error: "Challenge not found" });
   return res.json(challenge);
+};
+
+const seedChallenges = async (req, res) => {
+  const user = await User.findById(req.user?.id);
+  if (!user || user.role !== "teacher") {
+    return res.status(403).json({ error: "Teacher access required" });
+  }
+
+  const problems = await Problem.find().sort({ createdAt: 1 }).select("_id");
+  if (problems.length < CHALLENGE_BLUEPRINTS.length) {
+    return res.status(400).json({
+      error:
+        "Not enough problems to build challenges. Seed topics/problems first with POST /api/seed/python.",
+    });
+  }
+
+  let existingChallenges = await Challenge.find().select("title");
+  if (req.query.force === "true") {
+    await Challenge.deleteMany({});
+    existingChallenges = [];
+  }
+
+  const now = new Date();
+  const endsAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 90);
+  const problemIds = problems.map((p) => p._id);
+  const existingTitles = new Set(existingChallenges.map((c) => c.title));
+  const remaining = CHALLENGE_BLUEPRINTS.filter((b) => !existingTitles.has(b.title));
+
+  if (!remaining.length) {
+    return res.json({
+      message: "Challenges already seeded",
+      count: existingChallenges.length,
+    });
+  }
+
+  const payload = remaining.map((blueprint) => ({
+    title: blueprint.title,
+    description:
+      `${blueprint.description} ` +
+      "Submission counts only after all test cases pass. Ranked by solved count, solve time, runtime, and complexity efficiency.",
+    problemIds: pickChallengeProblems(
+      problemIds,
+      CHALLENGE_BLUEPRINTS.findIndex((b) => b.title === blueprint.title),
+      10
+    ),
+    startsAt: now,
+    endsAt,
+    active: true,
+  }));
+
+  const created = await Challenge.insertMany(payload);
+  return res.json({ message: "Challenges seeded", count: created.length, challenges: created });
+};
+
+const getChallengeLeaderboard = async (req, res) => {
+  const challenge = await Challenge.findById(req.params.id);
+  if (!challenge) return res.status(404).json({ error: "Challenge not found" });
+
+  const viewer = await User.findById(req.user.id);
+  if (!viewer) return res.status(404).json({ error: "User not found" });
+
+  const teacherId = viewer.role === "teacher" ? viewer._id : viewer.teacherId;
+  if (!teacherId) return res.status(400).json({ error: "Teacher not assigned" });
+
+  const submissions = await Submission.find({
+    challengeId: challenge._id,
+    teacherId,
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const challengeProblemSet = new Set((challenge.problemIds || []).map((id) => id.toString()));
+  const userMap = new Map();
+
+  for (const sub of submissions) {
+    const problemKey = sub.problemId?.toString();
+    if (!challengeProblemSet.has(problemKey)) continue;
+    const userKey = sub.userId.toString();
+
+    if (!userMap.has(userKey)) {
+      userMap.set(userKey, {
+        userId: userKey,
+        startedAt: sub.createdAt,
+        lastSubmission: sub.createdAt,
+        problems: new Map(),
+      });
+    }
+
+    const bucket = userMap.get(userKey);
+    if (sub.createdAt < bucket.startedAt) bucket.startedAt = sub.createdAt;
+    if (sub.createdAt > bucket.lastSubmission) bucket.lastSubmission = sub.createdAt;
+
+    if (!bucket.problems.has(problemKey)) {
+      bucket.problems.set(problemKey, {
+        wrongBeforeAccepted: 0,
+        firstAcceptedAt: null,
+        bestRuntimeMs: Number.POSITIVE_INFINITY,
+        bestComplexityScore: Number.POSITIVE_INFINITY,
+      });
+    }
+
+    const stat = bucket.problems.get(problemKey);
+    if (sub.status === "Accepted") {
+      if (!stat.firstAcceptedAt) {
+        stat.firstAcceptedAt = sub.createdAt;
+      }
+      stat.bestRuntimeMs = Math.min(stat.bestRuntimeMs, sub.runtimeMs || 0);
+      stat.bestComplexityScore = Math.min(stat.bestComplexityScore, sub.complexityScore || 3);
+    } else if (!stat.firstAcceptedAt) {
+      stat.wrongBeforeAccepted += 1;
+    }
+  }
+
+  const rows = [];
+  for (const [, entry] of userMap) {
+    const solved = Array.from(entry.problems.values()).filter((p) => p.firstAcceptedAt);
+    if (!solved.length) continue;
+
+    const solvedCount = solved.length;
+    const avgRuntimeMs = solved.reduce((acc, p) => acc + p.bestRuntimeMs, 0) / solvedCount;
+    const avgComplexityScore =
+      solved.reduce((acc, p) => acc + p.bestComplexityScore, 0) / solvedCount;
+    const penaltyMinutes = solved.reduce((acc, p) => {
+      const elapsedMs = new Date(p.firstAcceptedAt).getTime() - new Date(entry.startedAt).getTime();
+      const wrongPenalty = p.wrongBeforeAccepted * 5;
+      return acc + elapsedMs / 60000 + wrongPenalty;
+    }, 0);
+
+    rows.push({
+      userId: entry.userId,
+      solvedCount,
+      avgRuntimeMs,
+      avgComplexityScore,
+      penaltyMinutes,
+      startedAt: entry.startedAt,
+      lastSubmission: entry.lastSubmission,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.solvedCount !== a.solvedCount) return b.solvedCount - a.solvedCount;
+    if (a.penaltyMinutes !== b.penaltyMinutes) return a.penaltyMinutes - b.penaltyMinutes;
+    if (a.avgRuntimeMs !== b.avgRuntimeMs) return a.avgRuntimeMs - b.avgRuntimeMs;
+    return a.avgComplexityScore - b.avgComplexityScore;
+  });
+
+  const runtimeValues = rows.map((r) => r.avgRuntimeMs);
+  const complexityValues = rows.map((r) => r.avgComplexityScore);
+  const speedValues = rows.map((r) => r.penaltyMinutes);
+
+  const users = await User.find({ _id: { $in: rows.map((r) => r.userId) } }).select(
+    "_id email displayName"
+  );
+  const profiles = new Map(users.map((u) => [u._id.toString(), u]));
+
+  const leaderboard = rows.map((row, index) => ({
+    rank: index + 1,
+    userId: row.userId,
+    name: profiles.get(row.userId)?.displayName || profiles.get(row.userId)?.email || "Student",
+    email: profiles.get(row.userId)?.email || "",
+    solvedCount: row.solvedCount,
+    totalProblems: challenge.problemIds.length,
+    avgRuntimeMs: Math.round(row.avgRuntimeMs),
+    avgComplexityScore: Math.round(row.avgComplexityScore * 100) / 100,
+    runtimePercentile: percentileLowerBetter(runtimeValues, row.avgRuntimeMs),
+    complexityPercentile: percentileLowerBetter(complexityValues, row.avgComplexityScore),
+    speedPercentile: percentileLowerBetter(speedValues, row.penaltyMinutes),
+    penaltyMinutes: round2(row.penaltyMinutes),
+    startedAt: row.startedAt,
+    lastSubmission: row.lastSubmission,
+  }));
+
+  return res.json({
+    challengeId: challenge._id,
+    challengeTitle: challenge.title,
+    leaderboard,
+    rankingRule:
+      "Ranked by solved count, then lower penalty time (solve elapsed + 5m per wrong attempt), then runtime, then complexity score.",
+  });
 };
 
 const seedPython = async (req, res) => {
@@ -462,15 +702,7 @@ const seedPython = async (req, res) => {
   ];
 
   await Problem.insertMany(problems);
-
-  const sampleChallenge = await Challenge.create({
-    title: "Python Sprint Challenge",
-    description: "Solve 10 problems fast. Ranked by solved count and runtime.",
-    problemIds: problems.slice(0, 10).map((p) => p._id),
-    active: true,
-  });
-
-  return res.json({ message: "Seeded", topics, challenge: sampleChallenge });
+  return res.json({ message: "Seeded", topics, problems: problems.length });
 };
 
 module.exports = {
@@ -480,5 +712,7 @@ module.exports = {
   getProblem,
   listChallenges,
   getChallenge,
+  getChallengeLeaderboard,
   seedPython,
+  seedChallenges,
 };

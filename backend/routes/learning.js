@@ -1,33 +1,30 @@
 const express = require("express");
+const auth = require("../middleware/auth");
+const {
+  listTopics,
+  getTopic,
+  listProblems,
+  getProblem,
+  listChallenges,
+  getChallenge,
+  getChallengeLeaderboard,
+  seedPython,
+  seedChallenges,
+} = require("../controllers/learningController");
+
 const router = express.Router();
 
-// GET topics
-router.get("/topics", (req, res) => {
-  res.json([
-    { title: "Python Basics", slug: "python-basics" },
-    { title: "Loops", slug: "loops" },
-    { title: "Functions", slug: "functions" }
-  ]);
-});
+router.get("/topics", listTopics);
+router.get("/topics/:id", getTopic);
 
-// GET lesson
-router.get("/lesson/:slug", (req, res) => {
-  const lessons = {
-    "python-basics": {
-      title: "Python Basics",
-      content: "print('Hello world')"
-    },
-    "loops": {
-      title: "Loops",
-      content: "for i in range(5): print(i)"
-    },
-    "functions": {
-      title: "Functions",
-      content: "def greet(): print('hi')"
-    }
-  };
+router.get("/problems", listProblems);
+router.get("/problems/:id", getProblem);
 
-  res.json(lessons[req.params.slug] || {});
-});
+router.get("/challenges", listChallenges);
+router.get("/challenges/:id", getChallenge);
+router.get("/challenges/:id/leaderboard", auth, getChallengeLeaderboard);
+
+router.post("/seed/python", auth, seedPython);
+router.post("/seed/challenges", auth, seedChallenges);
 
 module.exports = router;
