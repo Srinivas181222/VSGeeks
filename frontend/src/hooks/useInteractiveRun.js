@@ -224,6 +224,8 @@ export default function useInteractiveRun() {
       inputText.endsWith("\n") || inputText.endsWith("\r\n")
         ? inputText
         : `${inputText}\n`;
+    const echoedInput = payload.replace(/\r\n/g, "\n");
+    appendOutput(echoedInput);
 
     let lastError = null;
     for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -232,7 +234,6 @@ export default function useInteractiveRun() {
           method: "POST",
           body: JSON.stringify({ input: payload }),
         });
-        appendOutput(payload.replace(/\r\n/g, "\n"));
         return;
       } catch (err) {
         lastError = err;

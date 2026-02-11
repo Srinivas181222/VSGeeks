@@ -312,30 +312,44 @@ export default function ProblemSolver() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-[#080d14] text-white">
       <Navbar />
-      <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[1.1fr_1.4fr]">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+      <div className="border-y border-slate-800 bg-slate-950/70 backdrop-blur">
+        <div className="mx-auto max-w-[1700px] px-4 py-3">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <div className="uppercase tracking-[0.2em]">Practice Workspace</div>
+            <div>{challengeId ? "Challenge Mode Enabled" : "Standard Practice Mode"}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-[1700px] gap-5 px-4 py-6 lg:grid-cols-[1.02fr_1.38fr]">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-widest text-emerald-300">
                 {problem.difficulty}
               </div>
-              <div className="mt-2 text-2xl font-semibold">{problem.title}</div>
+              <div className="mt-2 text-4xl font-semibold leading-tight">{problem.title}</div>
             </div>
-            <Link to={`/practice/${topicId}`} className="text-xs text-slate-400 hover:text-white">
+            <Link to={`/practice/${topicId}`} className="text-sm text-slate-400 hover:text-white">
               Back to list
             </Link>
           </div>
-          <p className="mt-4 text-sm text-slate-300">{problem.prompt}</p>
-          <div className="mt-4 text-xs text-slate-500">Expected Complexity: {problem.complexity}</div>
+          <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
+            <div className="text-xs uppercase tracking-widest text-slate-500">Problem Statement</div>
+            <p className="mt-3 text-lg leading-8 text-slate-200">{problem.prompt}</p>
+            <div className="mt-4 text-xs text-slate-500">
+              Expected Complexity: {problem.complexity}
+            </div>
+          </div>
           {challengeId && (
-            <div className="mt-2 text-xs text-emerald-300">
+            <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
               Challenge mode enabled. Submission counts only when all tests pass.
             </div>
           )}
 
-          <div className="mt-6 flex items-center gap-3">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               onClick={() => setShowSolution((prev) => !prev)}
               className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-slate-600"
@@ -351,13 +365,13 @@ export default function ProblemSolver() {
           </div>
 
           {showSolution && (
-            <pre className="mt-4 rounded-lg bg-slate-950 p-4 text-xs text-emerald-200">
+            <pre className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-emerald-200">
               {problem.solution}
             </pre>
           )}
 
           {result && (
-            <div className="mt-6 rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm">
+            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/90 p-4 text-sm">
               <div className="text-sm font-semibold text-white">Submission Result</div>
               <div className="mt-2 text-xs text-slate-400">
                 Status: <span className="text-emerald-300">{result.status}</span>
@@ -382,10 +396,10 @@ export default function ProblemSolver() {
                 <div className="mt-3 text-xs text-slate-500">Showing first failed cases.</div>
               )}
             </div>
-          )}
+            )}
         </div>
 
-        <div className="flex min-h-[620px] overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
+        <div className="flex min-h-[740px] overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
           <Sidebar
             tree={tree}
             activeFileId={activeFileId}
