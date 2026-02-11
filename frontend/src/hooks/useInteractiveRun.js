@@ -76,6 +76,8 @@ export default function useInteractiveRun() {
       let nextSessionId = null;
       let streamController = null;
       let receivedEnd = false;
+      let sessionCreated = false;
+      let streamEstablished = false;
 
       try {
         const start = await apiRequest("/api/run/session", {
@@ -92,6 +94,7 @@ export default function useInteractiveRun() {
         sessionRef.current = nextSessionId;
         setSessionId(nextSessionId);
         setRunState("running");
+        sessionCreated = true;
 
         streamController = new AbortController();
         streamAbortRef.current = streamController;
@@ -112,6 +115,7 @@ export default function useInteractiveRun() {
         if (!streamRes.body) {
           throw new Error("Streaming is not supported in this browser.");
         }
+        streamEstablished = true;
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
@@ -160,6 +164,16 @@ export default function useInteractiveRun() {
       } catch (err) {
         if (streamController?.signal.aborted) return;
 
+        if (sessionCreated && sessionRef.current === nextSessionId) {
+          setRunState("running");
+          setRunMessage(
+            streamEstablished
+              ? "Connection dropped before completion. You can still try Send, or click Run again."
+              : "Could not attach live console stream. You can still try Send, or click Run again."
+          );
+          return;
+        }
+
         if (nextSessionId) {
           try {
             await apiRequest(`/api/run/session/${nextSessionId}`, { method: "DELETE" });
@@ -191,10 +205,20 @@ export default function useInteractiveRun() {
         ? inputText
         : `${inputText}\n`;
 
-    await apiRequest(`/api/run/session/${activeSessionId}/input`, {
-      method: "POST",
-      body: JSON.stringify({ input: payload }),
-    });
+    try {
+      await apiRequest(`/api/run/session/${activeSessionId}/input`, {
+        method: "POST",
+        body: JSON.stringify({ input: payload }),
+      });
+    } catch (err) {
+      if (/run session/i.test(err.message || "")) {
+        sessionRef.current = null;
+        setSessionId(null);
+        setRunState("error");
+        setRunMessage(err.message);
+      }
+      throw err;
+    }
   }, []);
 
   const clearOutput = useCallback(() => {
