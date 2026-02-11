@@ -8,7 +8,7 @@ const { findNode } = require("../utils/tree");
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const LEGACY_TIMEOUT_MS = 5000;
-const SESSION_TIMEOUT_MS = 45000;
+const SESSION_TIMEOUT_MS = Number(process.env.RUN_SESSION_TIMEOUT_MS || 180000);
 const SESSION_TTL_MS = 30000;
 const runSessions = new Map();
 
@@ -256,7 +256,9 @@ const streamRunSession = (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   if (typeof res.flushHeaders === "function") res.flushHeaders();
+  res.write(": connected\n\n");
 
   for (const evt of session.events) {
     sendSse(res, evt.event, evt.data);
@@ -271,7 +273,7 @@ const streamRunSession = (req, res) => {
     if (!res.writableEnded) {
       res.write(": ping\n\n");
     }
-  }, 15000);
+  }, 3000);
 
   req.on("close", () => {
     clearInterval(heartbeat);

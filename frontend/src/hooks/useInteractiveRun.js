@@ -152,9 +152,10 @@ export default function useInteractiveRun() {
         }
 
         if (!receivedEnd && sessionRef.current === nextSessionId) {
-          setRunState("done");
-          sessionRef.current = null;
-          setSessionId(null);
+          setRunState("running");
+          setRunMessage(
+            "Connection dropped before completion. You can still try Send, or click Run again."
+          );
         }
       } catch (err) {
         if (streamController?.signal.aborted) return;
