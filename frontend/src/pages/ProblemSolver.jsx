@@ -90,6 +90,102 @@ const nodeContainsId = (node, targetId) => {
   return node.children.some((child) => nodeContainsId(child, targetId));
 };
 
+const formatLiteral = (value) => {
+  if (typeof value === "string") return JSON.stringify(value);
+  return JSON.stringify(value);
+};
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const parseParamsFromStarter = (starter, entryName) => {
+  if (!starter || !entryName) return [];
+  const pattern = new RegExp(`def\\s+${escapeRegExp(entryName)}\\s*\\(([^)]*)\\)`);
+  const match = starter.match(pattern);
+  if (!match) return [];
+
+  return match[1]
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => part !== "self")
+    .map((part) => {
+      let name = part.replace(/^\*+/, "").trim();
+      const equalsIndex = name.indexOf("=");
+      if (equalsIndex >= 0) name = name.slice(0, equalsIndex).trim();
+      const colonIndex = name.indexOf(":");
+      if (colonIndex >= 0) name = name.slice(0, colonIndex).trim();
+      return name;
+    })
+    .filter(Boolean);
+};
+
+const inferParamsFromTests = (testCases) => {
+  const sampleInput = testCases?.[0]?.input;
+  if (Array.isArray(sampleInput)) {
+    return sampleInput.map((_, index) => `arg${index + 1}`);
+  }
+  if (sampleInput === undefined) return [];
+  return ["value"];
+};
+
+const buildLeetCodeStarter = (problem) => {
+  if (!problem) return "";
+  if (problem.entryType === "class") {
+    return problem.starter || "class Solution:\n    def __init__(self):\n        pass\n";
+  }
+
+  const paramsFromStarter = parseParamsFromStarter(problem.starter || "", problem.entryName);
+  const paramNames = paramsFromStarter.length
+    ? paramsFromStarter
+    : inferParamsFromTests(problem.testCases || []);
+  const argSection = paramNames.length ? `, ${paramNames.join(", ")}` : "";
+
+  return [
+    "class Solution:",
+    `    def ${problem.entryName}(self${argSection}):`,
+    "        # Write your solution here",
+    "        pass",
+    "",
+  ].join("\n");
+};
+
+const buildExamples = (problem) => {
+  if (!problem) return [];
+
+  const paramsFromStarter = parseParamsFromStarter(problem.starter || "", problem.entryName);
+  const paramNames = paramsFromStarter.length
+    ? paramsFromStarter
+    : inferParamsFromTests(problem.testCases || []);
+
+  return (problem.testCases || []).slice(0, 2).map((test, index) => {
+    const inputValue = test?.input;
+    let inputLabel = "";
+
+    if (problem.entryType === "class" && inputValue && typeof inputValue === "object") {
+      const initArgs = formatLiteral(inputValue.init || []);
+      const calls = formatLiteral(inputValue.calls || []);
+      inputLabel = `init = ${initArgs}, calls = ${calls}`;
+    } else if (Array.isArray(inputValue)) {
+      const names =
+        paramNames.length === inputValue.length
+          ? paramNames
+          : inputValue.map((_, i) => `arg${i + 1}`);
+      inputLabel = names
+        .map((name, i) => `${name} = ${formatLiteral(inputValue[i])}`)
+        .join(", ");
+    } else {
+      const name = paramNames[0] || "value";
+      inputLabel = `${name} = ${formatLiteral(inputValue)}`;
+    }
+
+    return {
+      title: `Example ${index + 1}`,
+      input: inputLabel,
+      output: formatLiteral(test?.output),
+    };
+  });
+};
+
 export default function ProblemSolver() {
   const { topicId, problemId } = useParams();
   const [searchParams] = useSearchParams();
@@ -119,6 +215,8 @@ export default function ProblemSolver() {
   } = useInteractiveRun();
 
   const activeFile = useMemo(() => findNode(tree, activeFileId), [tree, activeFileId]);
+  const leetStarter = useMemo(() => buildLeetCodeStarter(problem), [problem]);
+  const examples = useMemo(() => buildExamples(problem), [problem]);
 
   useEffect(() => {
     const load = async () => {
@@ -134,7 +232,7 @@ export default function ProblemSolver() {
 
   useEffect(() => {
     if (!problem) return;
-    const initialTree = createInitialTree(problem.starter || "");
+    const initialTree = createInitialTree(leetStarter);
     const mainFile = initialTree[0];
     setTree(initialTree);
     setTabs([{ id: mainFile.id, name: mainFile.name }]);
@@ -142,7 +240,7 @@ export default function ProblemSolver() {
     setEditorValue(mainFile.content || "");
     setFileError("");
     clearOutput();
-  }, [problem?.id, clearOutput]);
+  }, [problem?.id, leetStarter, clearOutput]);
 
   useEffect(() => {
     if (activeFile?.type === "file") {
@@ -290,7 +388,7 @@ export default function ProblemSolver() {
 
   const resetWorkspace = () => {
     if (!problem) return;
-    const initialTree = createInitialTree(problem.starter || "");
+    const initialTree = createInitialTree(leetStarter);
     const mainFile = initialTree[0];
     setTree(initialTree);
     setTabs([{ id: mainFile.id, name: mainFile.name }]);
@@ -343,6 +441,32 @@ export default function ProblemSolver() {
               Expected Complexity: {problem.complexity}
             </div>
           </div>
+          {problem.entryType === "function" && (
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
+              <div className="text-xs uppercase tracking-widest text-slate-500">
+                Function Signature (LeetCode Style)
+              </div>
+              <pre className="mt-3 whitespace-pre-wrap rounded-md bg-slate-950 p-3 text-xs text-emerald-200">
+{`class Solution:
+    def ${problem.entryName}(self, ...):
+        ...`}
+              </pre>
+            </div>
+          )}
+          {examples.length > 0 && (
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
+              <div className="text-xs uppercase tracking-widest text-slate-500">Examples</div>
+              <div className="mt-3 space-y-3">
+                {examples.map((example) => (
+                  <div key={example.title} className="rounded-md border border-slate-800 bg-slate-950 p-3">
+                    <div className="text-sm font-semibold text-slate-200">{example.title}</div>
+                    <div className="mt-1 text-xs text-slate-400">Input: {example.input}</div>
+                    <div className="text-xs text-slate-400">Output: {example.output}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {challengeId && (
             <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
               Challenge mode enabled. Submission counts only when all tests pass.
