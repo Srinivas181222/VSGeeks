@@ -23,9 +23,9 @@ export default function Practice() {
     <div className="min-h-screen bg-slate-950">
       <Navbar onToggleTutorial={() => {}} />
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="text-2xl font-semibold text-white">Practice by Topic</div>
+        <div className="text-2xl font-semibold text-white">Questions by Topic</div>
         <div className="text-sm text-slate-400">
-          Choose a topic and solve 50 curated problems.
+          Choose a topic and solve curated questions.
         </div>
         {error && <div className="mt-4 text-sm text-rose-400">{error}</div>}
 
@@ -44,7 +44,7 @@ export default function Practice() {
                 to={`/practice/${topic._id}`}
                 className="mt-5 inline-flex rounded-md bg-emerald-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400"
               >
-                Practice 50 Problems
+                Solve Questions
               </Link>
             </div>
           ))}

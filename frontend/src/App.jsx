@@ -12,6 +12,7 @@ import Topics from "./pages/Topics";
 import TopicDetail from "./pages/TopicDetail";
 import PracticeList from "./pages/PracticeList";
 import ProblemSolver from "./pages/ProblemSolver";
+import PracticeStudio from "./pages/PracticeStudio";
 import Challenges from "./pages/Challenges";
 import ChallengeDetail from "./pages/ChallengeDetail";
 import Leaderboard from "./pages/Leaderboard";
@@ -72,6 +73,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Practice />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/practice-workspace"
+          element={
+            <RequireAuth>
+              <PracticeStudio />
             </RequireAuth>
           }
         />

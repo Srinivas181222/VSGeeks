@@ -197,7 +197,7 @@ export default function TopicDetail() {
                 to={`/practice/${topic._id}`}
                 className="inline-flex w-full items-center justify-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
               >
-                Practice Topic Problems
+                Topic Questions
               </Link>
             </div>
           </aside>
@@ -262,7 +262,7 @@ export default function TopicDetail() {
             to={`/practice/${topic._id}`}
             className="inline-flex items-center rounded-md bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
           >
-            Practice 50 Problems
+            Solve Topic Questions
           </Link>
         </div>
       </div>

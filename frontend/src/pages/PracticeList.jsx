@@ -29,9 +29,9 @@ export default function PracticeList() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="text-2xl font-semibold">{topic?.title || "Practice"}</div>
+        <div className="text-2xl font-semibold">{topic?.title || "Questions"}</div>
         <div className="text-sm text-slate-400">
-          {problems.length} practice problems
+          {problems.length} questions
         </div>
         {error && <div className="mt-4 text-sm text-rose-400">{error}</div>}
 

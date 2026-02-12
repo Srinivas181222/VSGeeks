@@ -38,6 +38,9 @@ export default function Navbar({ onToggleTutorial = () => {}, showTutorialToggle
           Projects
         </NavLink>
         <NavLink to="/practice" className={navLinkClass}>
+          Questions
+        </NavLink>
+        <NavLink to="/practice-workspace" className={navLinkClass}>
           Practice
         </NavLink>
         <NavLink to="/courses" className={navLinkClass}>
