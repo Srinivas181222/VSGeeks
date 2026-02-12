@@ -65,6 +65,39 @@ const updateContent = (nodes, nodeId, content) =>
     return node;
   });
 
+const buildWorkspaceRunPayload = (nodes, activeId) => {
+  const files = [];
+  let entryFile = "";
+
+  const walk = (items, parentSegments = []) => {
+    for (const node of items || []) {
+      if (!node || typeof node.name !== "string") continue;
+      const nextSegments = [...parentSegments, node.name];
+      if (node.type === "folder") {
+        walk(node.children || [], nextSegments);
+        continue;
+      }
+      if (node.type !== "file") continue;
+
+      const relativePath = nextSegments.join("/");
+      files.push({
+        path: relativePath,
+        content: typeof node.content === "string" ? node.content : "",
+      });
+
+      if (node.id === activeId) {
+        entryFile = relativePath;
+      }
+    }
+  };
+
+  walk(nodes);
+  return {
+    files,
+    entryFile: entryFile || files[0]?.path || "",
+  };
+};
+
 const addNode = (nodes, parentId, newNode) => {
   if (!parentId) return [...nodes, newNode];
   return nodes.map((node) => {
@@ -214,7 +247,17 @@ export default function PracticeStudio() {
     setFileError("");
     try {
       const code = (editorValue ?? "").length ? editorValue : activeFile.content || "";
-      await startRun({ code });
+      const workspacePayload = buildWorkspaceRunPayload(tree, activeFileId);
+      if (!workspacePayload.files.length) {
+        setFileError("Workspace has no files to run.");
+        return;
+      }
+
+      await startRun({
+        code,
+        files: workspacePayload.files,
+        entryFile: workspacePayload.entryFile,
+      });
     } catch (err) {
       setFileError(err.message || "Unable to run code");
     }

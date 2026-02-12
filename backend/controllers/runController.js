@@ -18,31 +18,148 @@ const SESSION_TIMEOUT_MS = (() => {
 const SESSION_TTL_MS = 30000;
 const runSessions = new Map();
 
-const resolveSource = async ({ code, projectId, fileId, userId }) => {
+const invalidInputError = (message) => {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+};
+
+const isValidPathSegment = (segment) =>
+  typeof segment === "string" &&
+  segment.length > 0 &&
+  segment !== "." &&
+  segment !== ".." &&
+  !/[\\/]/.test(segment) &&
+  !segment.includes("\0");
+
+const normalizeRelativePath = (value) => {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  if (!segments.length) return null;
+  if (!segments.every(isValidPathSegment)) return null;
+  return segments.join("/");
+};
+
+const normalizeWorkspaceFiles = (files) => {
+  if (!Array.isArray(files) || !files.length) return [];
+
+  const seen = new Set();
+  return files.map((file) => {
+    if (!file || typeof file !== "object") {
+      throw invalidInputError("Workspace files must be objects.");
+    }
+
+    const relativePath = normalizeRelativePath(file.path);
+    if (!relativePath) {
+      throw invalidInputError("Workspace file paths are invalid.");
+    }
+
+    if (seen.has(relativePath)) {
+      throw invalidInputError(`Duplicate workspace file path: ${relativePath}`);
+    }
+    seen.add(relativePath);
+
+    return {
+      path: relativePath,
+      content: typeof file.content === "string" ? file.content : "",
+    };
+  });
+};
+
+const flattenProjectWorkspace = (
+  nodes,
+  parentSegments = [],
+  files = [],
+  idToPath = new Map(),
+  seenPaths = new Set()
+) => {
+  for (const node of nodes || []) {
+    const rawName = typeof node?.name === "string" ? node.name.trim() : "";
+    if (!isValidPathSegment(rawName)) {
+      throw invalidInputError("Project contains invalid file or folder names.");
+    }
+
+    const nextSegments = [...parentSegments, rawName];
+
+    if (node.type === "folder") {
+      flattenProjectWorkspace(node.children || [], nextSegments, files, idToPath, seenPaths);
+      continue;
+    }
+
+    if (node.type !== "file") continue;
+
+    const relativePath = nextSegments.join("/");
+    if (seenPaths.has(relativePath)) {
+      throw invalidInputError(`Duplicate project file path: ${relativePath}`);
+    }
+    seenPaths.add(relativePath);
+
+    files.push({
+      path: relativePath,
+      content: typeof node.content === "string" ? node.content : "",
+    });
+    if (typeof node.id === "string") {
+      idToPath.set(node.id, relativePath);
+    }
+  }
+
+  return { files, idToPath };
+};
+
+const resolveExecutionContext = async ({
+  code,
+  projectId,
+  fileId,
+  files,
+  entryFile,
+  userId,
+}) => {
   let source = code;
-  if (!source && projectId && fileId) {
+  let workspaceFiles = normalizeWorkspaceFiles(files);
+  let entryRelativePath = null;
+
+  if (workspaceFiles.length) {
+    entryRelativePath = normalizeRelativePath(entryFile) || workspaceFiles[0].path;
+    const workspacePaths = new Set(workspaceFiles.map((file) => file.path));
+    if (!workspacePaths.has(entryRelativePath)) {
+      throw invalidInputError("Entry file is missing from workspace files.");
+    }
+
+    if (typeof source !== "string") {
+      source =
+        workspaceFiles.find((file) => file.path === entryRelativePath)?.content || "";
+    }
+  } else if (!source && projectId && fileId) {
     const project = await Project.findOne({ _id: projectId, userId });
     if (!project) {
       const err = new Error("Project not found");
       err.status = 404;
       throw err;
     }
+
     const node = findNode(project.files, fileId);
     if (!node || node.type !== "file") {
       const err = new Error("File not found");
       err.status = 404;
       throw err;
     }
+
     source = node.content || "";
+    const flattened = flattenProjectWorkspace(project.files || []);
+    workspaceFiles = flattened.files;
+    entryRelativePath = flattened.idToPath.get(fileId) || null;
   }
 
   if (typeof source !== "string") {
-    const err = new Error("Code required");
-    err.status = 400;
-    throw err;
+    throw invalidInputError("Code required");
   }
 
-  return source;
+  return {
+    source,
+    workspaceFiles,
+    entryRelativePath,
+  };
 };
 
 const writeTempFile = (source) => {
@@ -52,6 +169,54 @@ const writeTempFile = (source) => {
   );
   fs.writeFileSync(tempFile, source, "utf8");
   return tempFile;
+};
+
+const createTempWorkspace = (workspaceFiles, entryRelativePath) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codelearn-"));
+
+  try {
+    for (const file of workspaceFiles) {
+      const absolutePath = path.resolve(tempDir, ...file.path.split("/"));
+      if (!absolutePath.startsWith(`${path.resolve(tempDir)}${path.sep}`)) {
+        throw invalidInputError("Invalid workspace file path.");
+      }
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, file.content, "utf8");
+    }
+
+    const selectedEntry = entryRelativePath || workspaceFiles[0]?.path;
+    const entryPath = normalizeRelativePath(selectedEntry);
+    if (!entryPath) {
+      throw invalidInputError("Entry file is invalid.");
+    }
+
+    const tempFile = path.resolve(tempDir, ...entryPath.split("/"));
+    if (!tempFile.startsWith(`${path.resolve(tempDir)}${path.sep}`) || !fs.existsSync(tempFile)) {
+      throw invalidInputError("Entry file not found in workspace.");
+    }
+
+    return { tempFile, tempDir };
+  } catch (err) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    throw err;
+  }
+};
+
+const createExecutionTarget = ({ source, workspaceFiles, entryRelativePath }) => {
+  if (workspaceFiles.length) {
+    return createTempWorkspace(workspaceFiles, entryRelativePath);
+  }
+  return { tempFile: writeTempFile(source), tempDir: null };
+};
+
+const cleanupTempArtifacts = ({ tempFile, tempDir }) => {
+  if (tempDir) {
+    fs.rm(tempDir, { recursive: true, force: true }, () => {});
+    return;
+  }
+  if (tempFile) {
+    fs.unlink(tempFile, () => {});
+  }
 };
 
 const sendSse = (res, event, data) => {
@@ -85,7 +250,7 @@ const finishSession = (session, payload) => {
   session.finished = true;
   clearTimeout(session.killTimer);
   if (session.cleanupTimer) clearTimeout(session.cleanupTimer);
-  fs.unlink(session.tempFile, () => {});
+  cleanupTempArtifacts({ tempFile: session.tempFile, tempDir: session.tempDir });
 
   emitSessionEvent(session, "end", payload);
 
@@ -102,24 +267,32 @@ const finishSession = (session, payload) => {
 };
 
 const runPython = async (req, res) => {
+  let tempFile = null;
+  let tempDir = null;
+
   try {
-    const { code, projectId, fileId, input } = req.body;
-    const source = await resolveSource({
+    const { code, projectId, fileId, input, files, entryFile } = req.body;
+    const context = await resolveExecutionContext({
       code,
       projectId,
       fileId,
+      files,
+      entryFile,
       userId: req.user.id,
     });
-
-    const tempFile = writeTempFile(source);
+    const target = createExecutionTarget(context);
+    tempFile = target.tempFile;
+    tempDir = target.tempDir;
 
     const child = spawn("python", ["-u", tempFile], {
       stdio: ["pipe", "pipe", "pipe"],
+      cwd: tempDir || path.dirname(tempFile),
     });
 
     let stdout = "";
     let stderr = "";
     let killed = false;
+    let completed = false;
 
     const killTimer = setTimeout(() => {
       killed = true;
@@ -127,8 +300,10 @@ const runPython = async (req, res) => {
     }, LEGACY_TIMEOUT_MS);
 
     const finish = (output) => {
+      if (completed) return null;
+      completed = true;
       clearTimeout(killTimer);
-      fs.unlink(tempFile, () => {});
+      cleanupTempArtifacts({ tempFile, tempDir });
       return res.json({ output });
     };
 
@@ -164,23 +339,32 @@ const runPython = async (req, res) => {
     }
     child.stdin.end();
   } catch (err) {
+    cleanupTempArtifacts({ tempFile, tempDir });
     return res.status(err.status || 500).json({ error: err.message || "Run failed" });
   }
 };
 
 const startRunSession = async (req, res) => {
+  let tempFile = null;
+  let tempDir = null;
+
   try {
-    const { code, projectId, fileId, input } = req.body;
-    const source = await resolveSource({
+    const { code, projectId, fileId, input, files, entryFile } = req.body;
+    const context = await resolveExecutionContext({
       code,
       projectId,
       fileId,
+      files,
+      entryFile,
       userId: req.user.id,
     });
+    const target = createExecutionTarget(context);
+    tempFile = target.tempFile;
+    tempDir = target.tempDir;
 
-    const tempFile = writeTempFile(source);
     const child = spawn("python", ["-u", tempFile], {
       stdio: ["pipe", "pipe", "pipe"],
+      cwd: tempDir || path.dirname(tempFile),
     });
     const sessionId = randomUUID();
 
@@ -189,6 +373,7 @@ const startRunSession = async (req, res) => {
       userId: req.user.id,
       child,
       tempFile,
+      tempDir,
       clients: new Set(),
       events: [],
       outputBytes: 0,
@@ -256,6 +441,7 @@ const startRunSession = async (req, res) => {
 
     return res.status(201).json({ sessionId, timeoutMs: SESSION_TIMEOUT_MS });
   } catch (err) {
+    cleanupTempArtifacts({ tempFile, tempDir });
     return res.status(err.status || 500).json({ error: err.message || "Run failed" });
   }
 };
