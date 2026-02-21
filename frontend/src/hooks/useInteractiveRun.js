@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE, apiRequest } from "../lib/api";
+import {
+  API_BASE,
+  apiRequest,
+  clearAuthSession,
+  getAuthHeaders,
+  redirectToLogin,
+  SESSION_EXPIRED_MESSAGE,
+} from "../lib/api";
 
 const SESSION_LOOKUP_ERROR_RE = /run session not found|expired or unavailable/i;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,11 +35,6 @@ const parseSseBlock = (block) => {
   } catch {
     return { event, data: rawData };
   }
-};
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 export default function useInteractiveRun() {
@@ -88,7 +90,21 @@ export default function useInteractiveRun() {
         return streamRes;
       }
 
-      const message = await streamRes.text().catch(() => "");
+      const rawMessage = await streamRes.text().catch(() => "");
+      let message = rawMessage;
+      try {
+        const parsed = JSON.parse(rawMessage);
+        message = parsed?.error || parsed?.message || rawMessage;
+      } catch {
+        // Keep plain text message.
+      }
+
+      if (streamRes.status === 401) {
+        clearAuthSession();
+        redirectToLogin();
+        throw new Error(SESSION_EXPIRED_MESSAGE);
+      }
+
       const retriable = streamRes.status === 404 && SESSION_LOOKUP_ERROR_RE.test(message);
       const canRetry = retriable && attempt < maxAttempts && !signal.aborted;
       if (canRetry) {

@@ -20,11 +20,15 @@ import TeacherAdmin from "./pages/TeacherAdmin";
 import StudentSignup from "./pages/StudentSignup";
 import TeacherSignup from "./pages/TeacherSignup";
 import { isTeacher } from "./lib/auth";
+import { clearAuthSession, readAuthToken } from "./lib/api";
 import VerifyEmail from "./pages/VerifyEmail";
 
 const RequireAuth = ({ children }) => {
-  const token = localStorage.getItem("token");
-  if (!token) return <Navigate to="/login" replace />;
+  const token = readAuthToken();
+  if (!token) {
+    clearAuthSession();
+    return <Navigate to="/login" replace />;
+  }
   return children;
 };
 

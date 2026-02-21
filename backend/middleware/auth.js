@@ -1,8 +1,25 @@
 const jwt = require("jsonwebtoken");
 
+const normalizeBearerToken = (authorizationHeader = "") => {
+  if (typeof authorizationHeader !== "string") return null;
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  let token = match[1].trim();
+  if (!token) return null;
+
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+
+  return token || null;
+};
+
 const authMiddleware = (req, res, next) => {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const token = normalizeBearerToken(req.headers.authorization || "");
   if (!token) return res.status(401).json({ error: "Missing token" });
 
   try {
@@ -10,6 +27,9 @@ const authMiddleware = (req, res, next) => {
     req.user = { id: payload.id };
     return next();
   } catch (err) {
+    if (err?.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "Session expired. Please log in again." });
+    }
     return res.status(401).json({ error: "Invalid token" });
   }
 };
