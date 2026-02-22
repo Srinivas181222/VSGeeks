@@ -8,23 +8,25 @@ const signupStudent = async (req, res) => {
   if (!email || !password || !teacherEmail) {
     return res.status(400).json({ error: "Email, password, and teacher email required" });
   }
-  if (!validator.isEmail(email) || !validator.isEmail(teacherEmail)) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedTeacherEmail = String(teacherEmail).trim().toLowerCase();
+  if (!validator.isEmail(normalizedEmail) || !validator.isEmail(normalizedTeacherEmail)) {
     return res.status(400).json({ error: "Valid email required" });
   }
 
-  const existing = await User.findOne({ email });
+  const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     return res.status(409).json({ error: "User already exists" });
   }
 
-  const teacher = await User.findOne({ email: teacherEmail, role: "teacher" });
+  const teacher = await User.findOne({ email: normalizedTeacherEmail, role: "teacher" });
   if (!teacher) {
     return res.status(404).json({ error: "Teacher not found" });
   }
 
   const hashed = await bcrypt.hash(password, 10);
   const user = await User.create({
-    email,
+    email: normalizedEmail,
     password: hashed,
     role: "student",
     displayName: displayName || "",
@@ -46,22 +48,27 @@ const signupTeacher = async (req, res) => {
   if (!email || !password || !teacherCode) {
     return res.status(400).json({ error: "Email, password, and teacher code required" });
   }
-  if (!validator.isEmail(email)) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (!validator.isEmail(normalizedEmail)) {
     return res.status(400).json({ error: "Valid email required" });
   }
 
-  if (teacherCode !== (process.env.TEACHER_CODE || "CODELEARN_TEACHER")) {
+  const configuredTeacherCode = process.env.TEACHER_CODE;
+  if (!configuredTeacherCode) {
+    return res.status(500).json({ error: "Teacher signup is not configured on this server." });
+  }
+  if (teacherCode !== configuredTeacherCode) {
     return res.status(403).json({ error: "Invalid teacher code" });
   }
 
-  const existing = await User.findOne({ email });
+  const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     return res.status(409).json({ error: "User already exists" });
   }
 
   const hashed = await bcrypt.hash(password, 10);
   const user = await User.create({
-    email,
+    email: normalizedEmail,
     password: hashed,
     role: "teacher",
     displayName: displayName || "",
@@ -81,16 +88,25 @@ const login = async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
   }
-  if (!validator.isEmail(email)) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (!validator.isEmail(normalizedEmail)) {
     return res.status(400).json({ error: "Valid email required" });
   }
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ error: "User not found" });
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) return res.status(401).json({ error: "Invalid email or password" });
 
   const valid = await bcrypt.compare(password, user.password);
-  if (!valid) return res.status(401).json({ error: "Wrong password" });
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "dev_secret", {
+  if (!valid) return res.status(401).json({ error: "Invalid email or password" });
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    return res
+      .status(500)
+      .json({ error: "Authentication is not configured on this server." });
+  }
+
+  const token = jwt.sign({ id: user._id }, jwtSecret, {
     expiresIn: "7d",
   });
 

@@ -22,8 +22,13 @@ const authMiddleware = (req, res, next) => {
   const token = normalizeBearerToken(req.headers.authorization || "");
   if (!token) return res.status(401).json({ error: "Missing token" });
 
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    return res.status(500).json({ error: "Authentication is not configured on this server." });
+  }
+
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
+    const payload = jwt.verify(token, jwtSecret);
     req.user = { id: payload.id };
     return next();
   } catch (err) {

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Course = require("../models/Course");
 const Enrollment = require("../models/Enrollment");
+const User = require("../models/User");
 
 const listCourses = async (req, res) => {
   const courses = await Course.find({ published: true }).sort({ createdAt: -1 });
@@ -94,12 +95,24 @@ const submitAssignment = async (req, res) => {
 };
 
 const seedCourses = async (req, res) => {
+  const user = await User.findById(req.user?.id);
+  if (!user || user.role !== "teacher") {
+    return res.status(403).json({ error: "Teacher access required" });
+  }
+
+  const forceReset = req.query.force === "true";
+  if (forceReset && process.env.ALLOW_SEED_FORCE_RESET !== "true") {
+    return res.status(403).json({
+      error: "Force reset is disabled. Set ALLOW_SEED_FORCE_RESET=true to enable it.",
+    });
+  }
+
   const count = await Course.countDocuments();
-  if (count > 0 && req.query.force !== "true") {
+  if (count > 0 && !forceReset) {
     return res.json({ message: "Courses already seeded" });
   }
 
-  if (req.query.force === "true") {
+  if (forceReset) {
     await Enrollment.deleteMany({});
     await Course.deleteMany({});
   }

@@ -14,7 +14,7 @@ const router = express.Router();
 
 router.get("/", listCourses);
 router.get("/:id", getCourse);
-router.post("/seed", seedCourses);
+router.post("/seed", auth, seedCourses);
 
 router.post("/:id/enroll", auth, enroll);
 router.get("/:id/progress", auth, getProgress);

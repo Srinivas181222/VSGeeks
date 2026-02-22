@@ -217,6 +217,8 @@ export default function ProblemSolver() {
   const activeFile = useMemo(() => findNode(tree, activeFileId), [tree, activeFileId]);
   const leetStarter = useMemo(() => buildLeetCodeStarter(problem), [problem]);
   const examples = useMemo(() => buildExamples(problem), [problem]);
+  const hasReferenceSolution =
+    typeof problem?.solution === "string" && problem.solution.trim().length > 0;
 
   useEffect(() => {
     const load = async () => {
@@ -474,12 +476,14 @@ export default function ProblemSolver() {
           )}
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setShowSolution((prev) => !prev)}
-              className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-slate-600"
-            >
-              {showSolution ? "Hide Solution" : "Show Solution"}
-            </button>
+            {hasReferenceSolution && (
+              <button
+                onClick={() => setShowSolution((prev) => !prev)}
+                className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-slate-600"
+              >
+                {showSolution ? "Hide Solution" : "Show Solution"}
+              </button>
+            )}
             <button
               onClick={resetWorkspace}
               className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-slate-600"
@@ -488,7 +492,7 @@ export default function ProblemSolver() {
             </button>
           </div>
 
-          {showSolution && (
+          {showSolution && hasReferenceSolution && (
             <pre className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-emerald-200">
               {problem.solution}
             </pre>

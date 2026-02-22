@@ -65,12 +65,14 @@ const getTopic = async (req, res) => {
 const listProblems = async (req, res) => {
   const { topicId } = req.query;
   const filter = topicId ? { topicId } : {};
-  const problems = await Problem.find(filter).sort({ createdAt: 1 });
+  const problems = await Problem.find(filter)
+    .select("-solution -testCases")
+    .sort({ createdAt: 1 });
   return res.json(problems);
 };
 
 const getProblem = async (req, res) => {
-  const problem = await Problem.findById(req.params.id);
+  const problem = await Problem.findById(req.params.id).select("-solution -testCases");
   if (!problem) return res.status(404).json({ error: "Problem not found" });
   return res.json(problem);
 };
@@ -116,7 +118,14 @@ const seedChallenges = async (req, res) => {
   }
 
   let existingChallenges = await Challenge.find().select("title");
-  if (req.query.force === "true") {
+  const forceReset = req.query.force === "true";
+  if (forceReset && process.env.ALLOW_SEED_FORCE_RESET !== "true") {
+    return res.status(403).json({
+      error: "Force reset is disabled. Set ALLOW_SEED_FORCE_RESET=true to enable it.",
+    });
+  }
+
+  if (forceReset) {
     await Challenge.deleteMany({});
     existingChallenges = [];
   }
